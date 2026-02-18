@@ -30,3 +30,10 @@ yarn-error.log*
 
 # Ignore any other unnecessary files
 /.cache/
+
+# Build output
+dist/
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
