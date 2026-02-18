@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Giveaway {
+  id              Int      @id @default(autoincrement())
+  guildId         String
+  channelId       String
+  messageId       String   @unique
+  name            String
+  hostId          String
+  winnersCount    Int
+  actualWinnerIds String[]
+  entries         String[]
+  duration        String
+  endsAt          DateTime
+  ping            Boolean  @default(false)
+  ended           Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([guildId])
+  @@index([ended])
+  @@index([endsAt])
+  @@index([guildId, ended])
+}
