@@ -9,15 +9,46 @@ import {
 } from 'discord.js';
 import { container } from '@sapphire/framework';
 import { COLORS, CUSTOM_IDS, EMOJIS, LIMITS } from '../lib/constants.js';
-import type { Giveaway } from '@prisma/client';
+import type { Giveaway } from '../generated/prisma/client.js';
 
 export class GiveawayManager {
   private timers = new Map<number, NodeJS.Timeout>();
 
-  /**
-   * Restore timers for all active giveaways belonging to guilds this shard can see.
-   * Called on the `ready` event.
-   */
+  // ─── Guild Settings ──────────────────────────────────────────
+
+  public async getGuildSettings(guildId: string): Promise<{ color: number; emoji: string }> {
+    const settings = await container.prisma.guildSettings.findUnique({
+      where: { guildId }
+    });
+
+    return {
+      color: settings ? parseInt(settings.color.replace('#', ''), 16) : COLORS.PRIMARY,
+      emoji: settings?.emoji ?? EMOJIS.GIVEAWAY
+    };
+  }
+
+  public async setColor(guildId: string, color: string): Promise<void> {
+    await container.prisma.guildSettings.upsert({
+      where: { guildId },
+      update: { color },
+      create: { guildId, color }
+    });
+  }
+
+  public async setEmoji(guildId: string, emoji: string): Promise<void> {
+    await container.prisma.guildSettings.upsert({
+      where: { guildId },
+      update: { emoji },
+      create: { guildId, emoji }
+    });
+  }
+
+  public async getRawSettings(guildId: string) {
+    return container.prisma.guildSettings.findUnique({ where: { guildId } });
+  }
+
+  // ─── Timer Restoration ───────────────────────────────────────
+
   public async restoreTimers(client: Client<true>): Promise<void> {
     const guildIds = client.guilds.cache.map((g) => g.id);
 
@@ -34,7 +65,6 @@ export class GiveawayManager {
       const remaining = giveaway.endsAt.getTime() - now;
 
       if (remaining <= 0) {
-        // Already expired while bot was offline
         await this.endGiveaway(giveaway.id);
       } else {
         this.scheduleEnd(giveaway.id, remaining);
@@ -46,9 +76,8 @@ export class GiveawayManager {
     );
   }
 
-  /**
-   * Create a new giveaway: send the embed, store in DB, schedule end.
-   */
+  // ─── Core Operations ─────────────────────────────────────────
+
   public async create(options: {
     guildId: string;
     channelId: string;
@@ -65,16 +94,19 @@ export class GiveawayManager {
       throw new Error('Invalid text channel.');
     }
 
+    const settings = await this.getGuildSettings(options.guildId);
     const endsAt = new Date(Date.now() + options.durationMs);
+
     const embed = this.buildActiveEmbed({
       name: options.name,
       hostId: options.hostId,
       winnersCount: options.winnersCount,
       entriesCount: 0,
-      endsAt
+      endsAt,
+      color: settings.color
     });
 
-    const row = this.buildEnterRow('pending'); // We'll update the custom ID after we have the DB id
+    const row = this.buildEnterRow('pending', settings.emoji);
 
     const message = await (channel as TextChannel).send({
       content: options.ping ? '@everyone' : undefined,
@@ -98,8 +130,7 @@ export class GiveawayManager {
       }
     });
 
-    // Update the button custom ID to use the real giveaway ID
-    const updatedRow = this.buildEnterRow(giveaway.id.toString());
+    const updatedRow = this.buildEnterRow(giveaway.id.toString(), settings.emoji);
     await message.edit({ components: [updatedRow] });
 
     this.scheduleEnd(giveaway.id, options.durationMs);
@@ -107,9 +138,6 @@ export class GiveawayManager {
     return giveaway;
   }
 
-  /**
-   * Edit an existing active giveaway.
-   */
   public async edit(
     id: number,
     guildId: string,
@@ -129,7 +157,7 @@ export class GiveawayManager {
 
     if (!giveaway) throw new Error('Active giveaway not found.');
 
-    // Calculate new end time if duration changed
+    const settings = await this.getGuildSettings(guildId);
     const newEndsAt = updates.durationMs
       ? new Date(Date.now() + updates.durationMs)
       : giveaway.endsAt;
@@ -147,7 +175,6 @@ export class GiveawayManager {
       }
     });
 
-    // Delete old message, post new one
     try {
       const oldChannel = await container.client.channels.fetch(giveaway.channelId);
       if (oldChannel?.isTextBased()) {
@@ -168,10 +195,11 @@ export class GiveawayManager {
       hostId: updated.hostId,
       winnersCount: updated.winnersCount,
       entriesCount: updated.entries.length,
-      endsAt: newEndsAt
+      endsAt: newEndsAt,
+      color: settings.color
     });
 
-    const row = this.buildEnterRow(updated.id.toString());
+    const row = this.buildEnterRow(updated.id.toString(), settings.emoji);
 
     const newMessage = await (newChannel as TextChannel).send({
       content: updated.ping ? '@everyone' : undefined,
@@ -184,7 +212,6 @@ export class GiveawayManager {
       data: { messageId: newMessage.id }
     });
 
-    // Reschedule timer
     this.cancelTimer(id);
     const remaining = newEndsAt.getTime() - Date.now();
     if (remaining > 0) {
@@ -194,9 +221,17 @@ export class GiveawayManager {
     return updated;
   }
 
-  /**
-   * Delete an active giveaway.
-   */
+  public async end(id: number, guildId: string): Promise<Giveaway> {
+    const giveaway = await container.prisma.giveaway.findFirst({
+      where: { id, guildId, ended: false }
+    });
+
+    if (!giveaway) throw new Error('Active giveaway not found.');
+
+    await this.endGiveaway(id);
+    return giveaway;
+  }
+
   public async delete(id: number, guildId: string): Promise<Giveaway> {
     const giveaway = await container.prisma.giveaway.findFirst({
       where: { id, guildId, ended: false }
@@ -204,7 +239,6 @@ export class GiveawayManager {
 
     if (!giveaway) throw new Error('Active giveaway not found.');
 
-    // Delete the Discord message
     try {
       const channel = await container.client.channels.fetch(giveaway.channelId);
       if (channel?.isTextBased()) {
@@ -220,9 +254,6 @@ export class GiveawayManager {
     return container.prisma.giveaway.delete({ where: { id } });
   }
 
-  /**
-   * List giveaways for a guild.
-   */
   public async list(guildId: string): Promise<{ active: Giveaway[]; ended: Giveaway[] }> {
     const [active, ended] = await Promise.all([
       container.prisma.giveaway.findMany({
@@ -239,9 +270,8 @@ export class GiveawayManager {
     return { active, ended };
   }
 
-  /**
-   * Add a user entry to a giveaway.
-   */
+  // ─── Entry Management ────────────────────────────────────────
+
   public async addEntry(giveawayId: number, userId: string): Promise<{ alreadyEntered: boolean; entriesCount: number }> {
     const giveaway = await container.prisma.giveaway.findUnique({
       where: { id: giveawayId }
@@ -258,15 +288,11 @@ export class GiveawayManager {
       data: { entries: { push: userId } }
     });
 
-    // Update the embed entry count
     await this.updateEntryCount(updated);
 
     return { alreadyEntered: false, entriesCount: updated.entries.length };
   }
 
-  /**
-   * Remove a user entry from a giveaway.
-   */
   public async removeEntry(giveawayId: number, userId: string): Promise<{ wasEntered: boolean; entriesCount: number }> {
     const giveaway = await container.prisma.giveaway.findUnique({
       where: { id: giveawayId }
@@ -290,9 +316,8 @@ export class GiveawayManager {
     return { wasEntered: true, entriesCount: updated.entries.length };
   }
 
-  /**
-   * End a giveaway: update embed, announce winners, mark as ended.
-   */
+  // ─── Giveaway Completion ─────────────────────────────────────
+
   public async endGiveaway(giveawayId: number): Promise<void> {
     const giveaway = await container.prisma.giveaway.findUnique({
       where: { id: giveawayId }
@@ -302,7 +327,6 @@ export class GiveawayManager {
 
     this.cancelTimer(giveawayId);
 
-    // Mark as ended in DB
     await container.prisma.giveaway.update({
       where: { id: giveawayId },
       data: { ended: true }
@@ -315,16 +339,13 @@ export class GiveawayManager {
       const textChannel = channel as TextChannel;
       const message = await textChannel.messages.fetch(giveaway.messageId);
 
-      // Build ended embed
       const endedEmbed = this.buildEndedEmbed(giveaway);
 
-      // Remove the enter button, keep no components (or add a link button)
       await message.edit({
         embeds: [endedEmbed],
         components: []
       });
 
-      // Announce winners
       const winnerMentions = giveaway.actualWinnerIds.map((id) => `<@${id}>`).join(', ');
       await textChannel.send({
         content: `Congratulations ${winnerMentions}! You won the **${giveaway.name}**!`,
@@ -335,9 +356,6 @@ export class GiveawayManager {
     }
   }
 
-  /**
-   * Reroll a giveaway (re-announce winners).
-   */
   public async reroll(id: number, guildId: string): Promise<void> {
     const giveaway = await container.prisma.giveaway.findFirst({
       where: { id, guildId }
@@ -360,11 +378,31 @@ export class GiveawayManager {
     }
   }
 
-  /**
-   * Reset all giveaway data for a guild.
-   */
+  public async rerollByMessageId(messageId: string): Promise<void> {
+    const giveaway = await container.prisma.giveaway.findUnique({
+      where: { messageId }
+    });
+
+    if (!giveaway) throw new Error('Giveaway not found for this message.');
+
+    try {
+      const channel = await container.client.channels.fetch(giveaway.channelId);
+      if (!channel?.isTextBased()) throw new Error('Channel not found.');
+
+      const textChannel = channel as TextChannel;
+      const winnerMentions = giveaway.actualWinnerIds.map((id) => `<@${id}>`).join(', ');
+
+      await textChannel.send({
+        content: `\uD83C\uDF89 The giveaway for **${giveaway.name}** has been rerolled! New winners: ${winnerMentions}`
+      });
+    } catch (error) {
+      throw new Error(`Failed to reroll giveaway: ${error}`);
+    }
+  }
+
+  // ─── Maintenance ─────────────────────────────────────────────
+
   public async reset(guildId: string): Promise<number> {
-    // Cancel all timers for this guild's active giveaways
     const activeGiveaways = await container.prisma.giveaway.findMany({
       where: { guildId, ended: false }
     });
@@ -380,9 +418,6 @@ export class GiveawayManager {
     return result.count;
   }
 
-  /**
-   * Purge completed giveaways older than PURGE_AFTER_DAYS.
-   */
   public async purgeOld(): Promise<number> {
     const cutoff = new Date(Date.now() - LIMITS.PURGE_AFTER_DAYS * 24 * 60 * 60 * 1000);
 
@@ -400,11 +435,9 @@ export class GiveawayManager {
     return result.count;
   }
 
-  // ─── Private Helpers ───────────────────────────────────────────
+  // ─── Private Helpers ─────────────────────────────────────────
 
   private scheduleEnd(giveawayId: number, delayMs: number): void {
-    // Cap setTimeout to ~24.8 days (max safe 32-bit int). For longer durations,
-    // the ready event will re-schedule on restart.
     const MAX_TIMEOUT = 2_147_483_647;
     const capped = Math.min(delayMs, MAX_TIMEOUT);
 
@@ -451,6 +484,7 @@ export class GiveawayManager {
     winnersCount: number;
     entriesCount: number;
     endsAt: Date;
+    color?: number;
   }): EmbedBuilder {
     const timestamp = Math.floor(options.endsAt.getTime() / 1000);
 
@@ -464,7 +498,7 @@ export class GiveawayManager {
           `Winners: **${options.winnersCount}**`
         ].join('\n')
       )
-      .setColor(COLORS.PRIMARY)
+      .setColor(options.color ?? COLORS.PRIMARY)
       .setTimestamp(options.endsAt);
   }
 
@@ -486,11 +520,11 @@ export class GiveawayManager {
       .setTimestamp(giveaway.endsAt);
   }
 
-  private buildEnterRow(giveawayId: string): ActionRowBuilder<ButtonBuilder> {
+  private buildEnterRow(giveawayId: string, emoji?: string): ActionRowBuilder<ButtonBuilder> {
     return new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`${CUSTOM_IDS.GIVEAWAY_ENTER}:${giveawayId}`)
-        .setEmoji(EMOJIS.GIVEAWAY)
+        .setEmoji(emoji ?? EMOJIS.GIVEAWAY)
         .setStyle(ButtonStyle.Primary)
     );
   }

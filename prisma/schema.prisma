@@ -1,10 +1,13 @@
 generator client {
-  provider = "prisma-client-js"
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model Giveaway {
@@ -28,4 +31,13 @@ model Giveaway {
   @@index([ended])
   @@index([endsAt])
   @@index([guildId, ended])
+}
+
+model GuildSettings {
+  id        Int      @id @default(autoincrement())
+  guildId   String   @unique
+  color     String   @default("#5865F2")
+  emoji     String   @default("🎉")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

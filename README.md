@@ -14,17 +14,53 @@ A Discord bot that hosts giveaways with predetermined winners. Built with TypeSc
 
 ## Tech Stack
 
-- **Runtime:** Node.js 20+
+- **Runtime:** Node.js 22+
 - **Language:** TypeScript 5
 - **Framework:** [Sapphire](https://sapphirejs.dev/) + [discord.js](https://discord.js.org/) v14
-- **Database:** PostgreSQL via [Prisma](https://www.prisma.io/)
+- **Database:** PostgreSQL 16 via [Prisma](https://www.prisma.io/)
 - **Sharding:** Built-in via discord.js ShardingManager
 
-## Setup
+## Quick Start (Docker)
+
+The fastest way to run the bot. Requires only Docker.
+
+1. Clone the repository
+2. Copy `.env.example` to `.env` and add your bot token and client ID:
+   ```bash
+   cp .env.example .env
+   ```
+3. Start everything:
+   ```bash
+   docker compose up -d
+   ```
+
+That's it. Docker Compose will automatically:
+- Start a PostgreSQL database
+- Run database migrations
+- Build and launch the bot with sharding
+
+To view logs:
+```bash
+docker compose logs -f bot
+```
+
+To stop:
+```bash
+docker compose down
+```
+
+To stop and delete all data:
+```bash
+docker compose down -v
+```
+
+## Manual Setup
+
+If you prefer to run without Docker.
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - PostgreSQL database
 - Discord bot token ([Developer Portal](https://discord.com/developers/applications))
 
@@ -35,7 +71,7 @@ A Discord bot that hosts giveaways with predetermined winners. Built with TypeSc
    ```bash
    npm install
    ```
-3. Copy `.env.example` to `.env` and fill in your values:
+3. Copy `.env.example` to `.env` and fill in your values (uncomment and set `DATABASE_URL`):
    ```bash
    cp .env.example .env
    ```
@@ -57,11 +93,6 @@ Build and run with sharding:
 ```bash
 npm run build
 npm start
-```
-
-Or use PM2:
-```bash
-pm2 start dist/index.js --name giveaway-bot
 ```
 
 ## Project Structure

@@ -7,7 +7,9 @@ export const COLORS = {
 
 export const CUSTOM_IDS = {
   GIVEAWAY_ENTER: 'giveaway-enter',
-  GIVEAWAY_LEAVE: 'giveaway-leave'
+  GIVEAWAY_LEAVE: 'giveaway-leave',
+  GIVEAWAY_WINNER_SELECT: 'giveaway-winner-select',
+  GCREATE_MODAL: 'gcreate-modal'
 } as const;
 
 export const LIMITS = {

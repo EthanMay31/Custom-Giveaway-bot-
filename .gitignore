@@ -37,3 +37,4 @@ dist/
 # Prisma
 prisma/*.db
 prisma/*.db-journal
+src/generated/

@@ -1,6 +1,6 @@
 import { Listener } from '@sapphire/framework';
 import { type Client, Events } from 'discord.js';
-import { giveawayManager } from '../commands/giveaway.js';
+import { giveawayManager } from '../lib/giveaway-manager.js';
 
 export class ReadyListener extends Listener {
   public constructor(context: Listener.LoaderContext, options: Listener.Options) {

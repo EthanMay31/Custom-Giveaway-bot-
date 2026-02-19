@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: giveaway
+      POSTGRES_PASSWORD: giveaway
+      POSTGRES_DB: giveaway_bot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U giveaway -d giveaway_bot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://giveaway:giveaway@db:5432/giveaway_bot
+    env_file:
+      - .env
+
+volumes:
+  pgdata:

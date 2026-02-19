@@ -1,7 +1,7 @@
 import { InteractionHandler, InteractionHandlerTypes } from '@sapphire/framework';
 import { MessageFlags, type ButtonInteraction } from 'discord.js';
 import { CUSTOM_IDS } from '../lib/constants.js';
-import { giveawayManager } from '../commands/giveaway.js';
+import { giveawayManager } from '../lib/giveaway-manager.js';
 
 export class GiveawayLeaveHandler extends InteractionHandler {
   public constructor(ctx: InteractionHandler.LoaderContext, options: InteractionHandler.Options) {

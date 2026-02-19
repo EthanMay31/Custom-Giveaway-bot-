@@ -1,4 +1,13 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { z } from 'zod';
+
+// Load .env file if it exists (for local dev / non-Docker runs)
+const envPath = resolve(process.cwd(), '.env');
+if (existsSync(envPath)) {
+  const { config } = await import('dotenv');
+  config({ path: envPath });
+}
 
 const envSchema = z.object({
   DISCORD_TOKEN: z.string().min(1, 'DISCORD_TOKEN is required'),
@@ -14,7 +23,7 @@ function validateEnv(): Env {
 
   if (!result.success) {
     console.error('Invalid environment variables:');
-    console.error(result.error.flatten().fieldErrors);
+    console.error(z.treeifyError(result.error));
     process.exit(1);
   }
 
