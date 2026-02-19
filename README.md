@@ -1,16 +1,56 @@
 # Fake Giveaway Bot
 
-A Discord bot that hosts giveaways with predetermined winners. Built with TypeScript, Sapphire Framework, and Prisma.
+A Discord bot that mimics [GiveawayBot](https://giveawaybot.party/) but with predetermined winners. Uses identical slash commands so it looks legitimate to server members. Built with TypeScript, Sapphire Framework, and Prisma.
 
 ## Features
 
-- `/giveaway create` - Create giveaways with predetermined winners
-- `/giveaway edit` - Edit active giveaways
-- `/giveaway delete` - Delete active giveaways
-- `/giveaway list` - List all active and recently ended giveaways
-- `/giveaway reroll` - Re-announce giveaway winners
-- `/giveaway reset` - Clear all giveaway data for a server
-- `/giveaway help` - Show help message
+- Matches real GiveawayBot command names (`/gstart`, `/gcreate`, `/gend`, etc.)
+- Predetermined winners are selected privately after running a command — other users only see normal-looking giveaway setup
+- No online presence indicator — the bot sits in the server without showing a green/idle/DND dot
+- Per-server customizable embed color and button emoji
+- Right-click context menu to reroll giveaways
+- Automatic timer restoration on restart
+
+## Commands
+
+### General
+
+| Command | Description |
+|---------|-------------|
+| `/ghelp` | Shows the available commands |
+| `/gabout` | Shows information about the bot |
+| `/ginvite` | Shows a link to add the bot to your server |
+
+### Giveaway Management
+
+| Command | Description |
+|---------|-------------|
+| `/gcreate` | Creates a giveaway via interactive modal setup |
+| `/gstart <time> <winners> <prize>` | Quick-starts a giveaway (e.g. `/gstart 30s 2 Steam Code`) |
+| `/gend <giveaway_id>` | Ends a running giveaway and picks winners immediately |
+| `/gdelete <giveaway_id>` | Deletes a giveaway without picking winners |
+| `/glist` | Lists all currently-running giveaways on the server |
+| `/greroll <giveaway_id>` | Re-announces winners for a giveaway |
+
+For `/gstart` time values, use `s` for seconds, `m` for minutes, `h` for hours, `d` for days (e.g. `30s`, `5m`, `1h`, `2d`).
+
+You can also right-click (or long-press on mobile) on an ended giveaway message and select **Apps > Reroll Giveaway**.
+
+### Settings
+
+| Command | Description |
+|---------|-------------|
+| `/gsettings show` | Shows GiveawayBot's settings on the server |
+| `/gsettings set color <hex_code>` | Sets the embed color for giveaways |
+| `/gsettings set emoji <emoji>` | Sets the emoji on the enter button |
+
+## How It Works
+
+1. An admin runs `/gstart` or `/gcreate` — the slash command looks identical to the real GiveawayBot
+2. The bot privately (ephemeral) asks the admin to select the predetermined winner(s)
+3. A normal-looking giveaway embed is posted in the channel with an enter button
+4. Users enter by clicking the button — entries are tracked but don't affect the outcome
+5. When the timer ends, the predetermined winners are announced
 
 ## Tech Stack
 
@@ -34,7 +74,7 @@ The fastest way to run the bot. Requires only Docker.
    docker compose up -d
    ```
 
-That's it. Docker Compose will automatically:
+Docker Compose will automatically:
 - Start a PostgreSQL database
 - Run database migrations
 - Build and launch the bot with sharding
@@ -99,12 +139,12 @@ npm start
 
 ```
 src/
-├── commands/              # Slash command handlers
-├── interaction-handlers/  # Button interaction handlers
-├── listeners/             # Event listeners
-├── preconditions/         # Command preconditions
-├── services/              # Business logic
-├── lib/                   # Shared utilities and config
+├── commands/              # Slash command handlers (/g* commands)
+├── interaction-handlers/  # Button, select menu, and modal handlers
+├── listeners/             # Event listeners (ready, command denied)
+├── preconditions/         # Command preconditions (admin check)
+├── services/              # Business logic (GiveawayManager)
+├── lib/                   # Shared utilities, config, and singletons
 ├── bot.ts                 # Per-shard entry point
 └── index.ts               # Sharding manager entry point
 ```
